@@ -1,4 +1,4 @@
-let baseDatos = { prov: {}, fac: {}, vend: {}, cli: {} };
+let baseDatos = { prov: {}, fac: {}, vend: {}, cli: {}, productos: {} };
 
 document.getElementById('btnProcesar').addEventListener('click', async function() {
     const files = {
@@ -8,105 +8,138 @@ document.getElementById('btnProcesar').addEventListener('click', async function(
         compras: document.getElementById('inputCompras').files[0]
     };
 
-    if (!files.ventas || !files.inv || !files.cxp || !files.compras) {
-        alert("Socio, ¡falta artillería! Carga los 4 archivos."); return;
+    if (!Object.values(files).every(f => f)) {
+        alert("Socio, carga los 4 archivos para poder analizar."); return;
     }
 
-    const [v, inv, cxp, comp] = await Promise.all([
-        leerExcel(files.ventas, "A"), leerExcel(files.inv, "A"),
-        leerExcel(files.cxp, "A"), leerExcel(files.compras, "A")
-    ]);
+    document.getElementById('welcomeMessage').innerHTML = '<h3 class="text-primary">Mapeando base de datos de Distrileco... ⏳</h3>';
 
-    procesarTodo(v, inv, cxp, comp);
+    try {
+        // Leemos con la primera fila como nombres de columnas
+        const [v, inv, cxp, comp] = await Promise.all([
+            leerExcel(files.ventas), leerExcel(files.inv),
+            leerExcel(files.cxp), leerExcel(files.compras)
+        ]);
+
+        procesarTodo(v, inv, cxp, comp);
+    } catch (error) {
+        console.error(error);
+        alert("Error al leer los archivos. Asegúrate que sean Excel o CSV.");
+    }
 });
 
 function procesarTodo(v, inv, cxp, comp) {
-    // REINICIAR BASE DE DATOS
-    baseDatos = { prov: {}, fac: {}, vend: {}, cli: {} };
+    baseDatos = { prov: {}, fac: {}, vend: {}, cli: {}, productos: {} };
 
-    // 1. MAPEO DE COMPRAS (LLAVE PARA TODO)
+    // 1. MAPEAR COMPRAS (Columna: factura, razon_social)
+    let mapaFacturas = {};
     comp.forEach(f => {
-        if(f.B) baseDatos.fac[f.B.toString().trim()] = { prov: f.E, total: f.L, saldo: 0 };
+        let nroFac = f.factura || f.documento || f.numero;
+        if(nroFac) mapaFacturas[nroFac.toString().trim()] = f.razon_social || f.proveedor;
     });
 
-    // 2. PROCESAR VENTAS (PROV, VEND, CLI)
+    // 2. INVENTARIO (Columna: referencia, totalinventario, costo_ponderado_final)
+    inv.forEach(f => {
+        let ref = f.referencia || f.codigo;
+        if(ref) baseDatos.productos[ref.toString().trim()] = { 
+            stock: parseFloat(f.totalinventario) || 0, 
+            costo: parseFloat(f.costo_ponderado_final) || 0 
+        };
+    });
+
+    // 3. VENTAS (Columna: referencia_proveedor, referencia, nombre_producto, cantidad, precio_base_venta, vendedor, razon_social, tipo)
     v.forEach(f => {
-        let p = f.H || "SIN PROVEEDOR";
-        let vend = f.L || "SIN VENDEDOR";
-        let cli = f.AJ || "CLIENTE VARIOS";
-        let total = (parseFloat(f.E) || 0) * (parseFloat(f.F) || 0);
-        if(f.A == 2) total = -total;
+        let p = f.referencia_proveedor || "SIN PROVEEDOR";
+        let desc = (f.nombre_producto || "").toUpperCase();
+        let ref = f.referencia ? f.referencia.toString().trim() : "";
+        
+        // Lógica de Combos
+        if (p === "SIN PROVEEDOR" || p === "") {
+            if (desc.includes("COLOMBINA")) p = "COLOMBINA";
+            else if (desc.includes("FAMILIA") || desc.includes("SANCELA")) p = "FAMILIA SANCELA";
+        }
 
-        // Agrupar Proveedores
-        if(!baseDatos.prov[p]) baseDatos.prov[p] = { vta: 0, deuda: 0 };
-        baseDatos.prov[p].vta += total;
+        let cant = parseFloat(f.cantidad) || 0;
+        let precio = parseFloat(f.precio_base_venta) || 0;
+        let subtotal = cant * precio;
+        if(f.tipo == "2") subtotal = -subtotal; // Devoluciones
 
-        // Agrupar Vendedores
+        if(!baseDatos.prov[p]) baseDatos.prov[p] = { vta: 0, deuda: 0, valorInv: 0 };
+        baseDatos.prov[p].vta += subtotal;
+
+        // Sumar valor de inventario al proveedor
+        if(baseDatos.productos[ref]) {
+            baseDatos.prov[p].valorInv += (baseDatos.productos[ref].stock * baseDatos.productos[ref].costo);
+        }
+
+        // Vendedores y Clientes
+        let vend = f.vendedor || "OFICINA";
         if(!baseDatos.vend[vend]) baseDatos.vend[vend] = { vta: 0 };
-        baseDatos.vend[vend].vta += total;
+        baseDatos.vend[vend].vta += subtotal;
 
-        // Agrupar Clientes
+        let cli = f.razon_social || "VARIO";
         if(!baseDatos.cli[cli]) baseDatos.cli[cli] = { vta: 0 };
-        baseDatos.cli[cli].vta += total;
+        baseDatos.cli[cli].vta += subtotal;
     });
 
-    // 3. PROCESAR CXP
+    // 4. CXP (Columna: documento, totalvalor o saldo)
     cxp.forEach(f => {
-        let fac = f.B ? f.B.toString().trim() : "";
-        let saldo = parseFloat(f.E) || 0;
-        if(baseDatos.fac[fac]) {
-            baseDatos.fac[fac].saldo = saldo;
-            let p = baseDatos.fac[fac].prov;
-            if(baseDatos.prov[p]) baseDatos.prov[p].deuda += saldo;
-        }
+        let nroFac = f.documento || f.numero;
+        let p = mapaFacturas[nroFac] || f.razon_social || "OTROS";
+        let deuda = parseFloat(f.totalvalor) || parseFloat(f.saldo) || 0;
+        if(!baseDatos.prov[p]) baseDatos.prov[p] = { vta: 0, deuda: 0, valorInv: 0 };
+        baseDatos.prov[p].deuda += deuda;
     });
 
     document.getElementById('welcomeMessage').style.display = 'none';
     document.getElementById('dashboardContent').style.display = 'block';
-    cambiarTab('proveedores'); // Tab por defecto
+    cambiarTab('proveedores');
 }
 
 function cambiarTab(tipo) {
     const areaSel = document.getElementById('areaSelector');
-    const areaRes = document.getElementById('areaResultados');
-    areaRes.innerHTML = "";
-    
-    let options = `<option value="">-- Selecciona un ${tipo} --</option>`;
     let dataObj = baseDatos[tipo === 'proveedores' ? 'prov' : tipo === 'vendedores' ? 'vend' : tipo === 'clientes' ? 'cli' : 'fac'];
-
-    Object.keys(dataObj).sort().forEach(k => {
-        options += `<option value="${k}">${k}</option>`;
-    });
-
-    areaSel.innerHTML = `<select class="form-select shadow-sm" onchange="verDetalle('${tipo}', this.value)">${options}</select>`;
+    let keys = Object.keys(dataObj).filter(k => k !== "undefined").sort();
+    let options = `<option value="">-- SELECCIONA ${tipo.toUpperCase()} --</option>`;
+    keys.forEach(k => options += `<option value="${k}">${k}</option>`);
+    areaSel.innerHTML = `<select class="form-select p-3 shadow border-primary" onchange="verDetalle('${tipo}', this.value)">${options}</select>`;
 }
 
 function verDetalle(tipo, llave) {
-    if(!llave) return;
     let data = baseDatos[tipo === 'proveedores' ? 'prov' : tipo === 'vendedores' ? 'vend' : tipo === 'clientes' ? 'cli' : 'fac'][llave];
-    let html = `<div class="mt-4 p-4 border rounded bg-white shadow-sm border-primary">
-                    <h4>Análisis de ${llave}</h4><hr>`;
-    
+    let html = `<div class="mt-4 p-4 border rounded bg-white shadow-lg border-primary">
+                <h4 class="text-primary">ANÁLISIS: ${llave}</h4><hr>`;
+
     if(tipo === 'proveedores') {
-        let semaforo = data.vta > data.deuda ? '🟢 SALUDABLE' : '🔴 CRÍTICO';
-        html += `<p>Ventas del Mes: <strong>$${data.vta.toLocaleString()}</strong></p>
-                 <p>Deuda Total: <strong>$${data.deuda.toLocaleString()}</strong></p>
-                 <div class="alert ${data.vta > data.deuda ? 'alert-success' : 'alert-danger'}">${semaforo}</div>`;
+        let vtaDia = data.vta / 30;
+        let diasInv = data.vta > 0 ? Math.round(data.valorInv / (vtaDia || 1)) : "SIN VENTAS";
+        let colorSemaforo = data.vta > data.deuda ? 'alert-success' : 'alert-danger';
+
+        html += `
+            <div class="row text-center mb-3">
+                <div class="col-md-4"><h6>Ventas Mes</h6><h3 class="text-success">$${data.vta.toLocaleString()}</h3></div>
+                <div class="col-md-4"><h6>Deuda</h6><h3 class="text-danger">$${data.deuda.toLocaleString()}</h3></div>
+                <div class="col-md-4"><h6>Días Bodega</h6><h3 class="text-warning">${diasInv}</h3></div>
+            </div>
+            <div class="alert ${colorSemaforo} text-center">
+                <h2>${data.vta > data.deuda ? '🟢 RENTABLE' : '🔴 NO RENTABLE'}</h2>
+            </div>
+            <div class="row">
+                <div class="col-md-6"><div class="card p-2 border-primary"><h6>Acción Proveedor</h6><p>${data.deuda > data.vta ? 'Frenar compras ya.' : 'Pedir descuento pronto pago.'}</p></div></div>
+                <div class="col-md-6"><div class="card p-2 border-success"><h6>Fuerza Ventas</h6><p>${diasInv > 30 ? 'Hacer combo con Arroz.' : 'Prioridad en ruta.'}</p></div></div>
+            </div>`;
     } else {
-        html += `<p>Ventas Totales: <strong>$${data.vta ? data.vta.toLocaleString() : 'N/A'}</strong></p>`;
-        if(tipo === 'facturas') html += `<p>Saldo Pendiente: <strong>$${data.saldo.toLocaleString()}</strong></p>`;
+        html += `<h2 class="text-center">$${data.vta.toLocaleString()}</h2><p class="text-center">Total Movimiento</p>`;
     }
-    
-    html += `</div>`;
     document.getElementById('areaResultados').innerHTML = html;
 }
 
-async function leerExcel(file, header) {
-    return new Promise((resolve) => {
+async function leerExcel(file) {
+    return new Promise(res => {
         const reader = new FileReader();
-        reader.onload = (e) => {
-            const wb = XLSX.read(new Uint8Array(e.target.result), {type: 'array'});
-            resolve(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header: header}));
+        reader.onload = e => {
+            const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
+            res(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]));
         };
         reader.readAsArrayBuffer(file);
     });
