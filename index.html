@@ -39,24 +39,40 @@
                             <label class="form-label">Compras Detalladas</label>
                             <input class="form-control form-control-sm" type="file" id="inputCompras">
                         </div>
-                        <button class="btn btn-success w-100" id="btnProcesar">Generar Informe Maestro</button>
+                        <button class="btn btn-success w-100" id="btnProcesar">GENERAR INFORME MAESTRO</button>
                     </div>
                 </div>
             </div>
 
             <div class="col-md-8">
-                <div class="card shadow-sm border-0">
-                    <div class="card-body text-center py-5" id="welcomeMessage">
-                        <h3 class="text-muted">Esperando datos para analizar...</h3>
-                        <p>Socio, carga los archivos a la izquierda para ver la magia.</p>
-                    </div>
-                    <div id="dashboardResult" style="display:none;">
-                        <h2 id="nombreProveedor">Resumen Proveedor</h2>
-                        <hr>
-                        <div class="row">
-                            <div class="col-6"><div class="p-3 border bg-white rounded">Ventas: <strong id="valVentas">$0</strong></div></div>
-                            <div class="col-6"><div class="p-3 border bg-white rounded">Deuda: <strong id="valCXP">$0</strong></div></div>
+                <div class="card shadow-sm border-0 min-vh-50">
+                    <div class="card-body" id="mainDisplay">
+                        
+                        <div id="welcomeMessage" class="text-center py-5">
+                            <h3 class="text-muted">Esperando datos para analizar...</h3>
+                            <p>Socio, carga los archivos a la izquierda para ver la magia.</p>
                         </div>
+
+                        <div id="dashboardResult" style="display:none;">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h3 id="nombreProveedor">Análisis Estratégico</h3>
+                                <button class="btn btn-outline-danger btn-sm" id="btnPDF">Descargar PDF Negociación</button>
+                            </div>
+                            
+                            <div class="mb-4">
+                                <label class="form-label fw-bold">Seleccionar Proveedor:</label>
+                                <select class="form-select" id="selectProveedor">
+                                    <option value="">-- Elige un proveedor para analizar --</option>
+                                </select>
+                            </div>
+
+                            <hr>
+                            
+                            <div id="kpiContainer"></div>
+
+                            <div id="recomendacionesBox" class="mt-4"></div>
+                        </div>
+
                     </div>
                 </div>
             </div>
@@ -68,6 +84,8 @@
     </footer>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.28/jspdf.plugin.autotable.min.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
