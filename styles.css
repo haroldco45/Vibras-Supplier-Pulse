@@ -1,1 +1,89 @@
+/* Estilos para Vibras Supplier Pulse */
 
+:root {
+    --primary-color: #0d6efd;
+    --success-color: #198754;
+    --dark-bg: #212529;
+    --light-gray: #f8f9fa;
+    --border-radius: 12px;
+}
+
+body {
+    background-color: var(--light-gray);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.navbar {
+    background: linear-gradient(90deg, #1e3c72 0%, #2a5298 100%) !important;
+    border-bottom: 3px solid var(--success-color);
+}
+
+.navbar-brand {
+    font-weight: bold;
+    letter-spacing: 1px;
+}
+
+.card {
+    border: none;
+    border-radius: var(--border-radius);
+    transition: transform 0.2s ease;
+}
+
+.card-header {
+    border-radius: var(--border-radius) var(--border-radius) 0 0 !important;
+    font-weight: 600;
+}
+
+.form-label {
+    font-weight: 500;
+    color: #495057;
+    font-size: 0.9rem;
+}
+
+.form-control-sm {
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+.btn-success {
+    background-color: var(--success-color);
+    border: none;
+    font-weight: bold;
+    padding: 10px;
+    border-radius: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 15px;
+}
+
+.btn-success:hover {
+    background-color: #146c43;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+}
+
+#dashboardResult {
+    padding: 20px;
+    animation: fadeIn 0.8s ease-in-out;
+}
+
+.footer-text {
+    font-size: 0.85rem;
+    color: #6c757d;
+    margin-top: 50px;
+}
+
+/* Animación simple para cuando aparezcan los datos */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Estilo para los KPIs */
+.kpi-box {
+    border-left: 5px solid var(--primary-color);
+    padding: 15px;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
