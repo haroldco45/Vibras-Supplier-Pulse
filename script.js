@@ -1,3 +1,5 @@
+let baseDatos = { prov: {}, fac: {}, vend: {}, cli: {} };
+
 document.getElementById('btnProcesar').addEventListener('click', async function() {
     const files = {
         ventas: document.getElementById('inputVentas').files[0],
@@ -7,17 +9,97 @@ document.getElementById('btnProcesar').addEventListener('click', async function(
     };
 
     if (!files.ventas || !files.inv || !files.cxp || !files.compras) {
-        alert("Socio, carga los 4 archivos para que la inteligencia de Vibras funcione.");
-        return;
+        alert("Socio, ¡falta artillería! Carga los 4 archivos."); return;
     }
 
-    const dVentas = await leerExcel(files.ventas, "A");
-    const dInv = await leerExcel(files.inv, "A");
-    const dCXP = await leerExcel(files.cxp, "A");
-    const dCompras = await leerExcel(files.compras, "A");
+    const [v, inv, cxp, comp] = await Promise.all([
+        leerExcel(files.ventas, "A"), leerExcel(files.inv, "A"),
+        leerExcel(files.cxp, "A"), leerExcel(files.compras, "A")
+    ]);
 
-    procesarInforme(dVentas, dInv, dCXP, dCompras);
+    procesarTodo(v, inv, cxp, comp);
 });
+
+function procesarTodo(v, inv, cxp, comp) {
+    // REINICIAR BASE DE DATOS
+    baseDatos = { prov: {}, fac: {}, vend: {}, cli: {} };
+
+    // 1. MAPEO DE COMPRAS (LLAVE PARA TODO)
+    comp.forEach(f => {
+        if(f.B) baseDatos.fac[f.B.toString().trim()] = { prov: f.E, total: f.L, saldo: 0 };
+    });
+
+    // 2. PROCESAR VENTAS (PROV, VEND, CLI)
+    v.forEach(f => {
+        let p = f.H || "SIN PROVEEDOR";
+        let vend = f.L || "SIN VENDEDOR";
+        let cli = f.AJ || "CLIENTE VARIOS";
+        let total = (parseFloat(f.E) || 0) * (parseFloat(f.F) || 0);
+        if(f.A == 2) total = -total;
+
+        // Agrupar Proveedores
+        if(!baseDatos.prov[p]) baseDatos.prov[p] = { vta: 0, deuda: 0 };
+        baseDatos.prov[p].vta += total;
+
+        // Agrupar Vendedores
+        if(!baseDatos.vend[vend]) baseDatos.vend[vend] = { vta: 0 };
+        baseDatos.vend[vend].vta += total;
+
+        // Agrupar Clientes
+        if(!baseDatos.cli[cli]) baseDatos.cli[cli] = { vta: 0 };
+        baseDatos.cli[cli].vta += total;
+    });
+
+    // 3. PROCESAR CXP
+    cxp.forEach(f => {
+        let fac = f.B ? f.B.toString().trim() : "";
+        let saldo = parseFloat(f.E) || 0;
+        if(baseDatos.fac[fac]) {
+            baseDatos.fac[fac].saldo = saldo;
+            let p = baseDatos.fac[fac].prov;
+            if(baseDatos.prov[p]) baseDatos.prov[p].deuda += saldo;
+        }
+    });
+
+    document.getElementById('welcomeMessage').style.display = 'none';
+    document.getElementById('dashboardContent').style.display = 'block';
+    cambiarTab('proveedores'); // Tab por defecto
+}
+
+function cambiarTab(tipo) {
+    const areaSel = document.getElementById('areaSelector');
+    const areaRes = document.getElementById('areaResultados');
+    areaRes.innerHTML = "";
+    
+    let options = `<option value="">-- Selecciona un ${tipo} --</option>`;
+    let dataObj = baseDatos[tipo === 'proveedores' ? 'prov' : tipo === 'vendedores' ? 'vend' : tipo === 'clientes' ? 'cli' : 'fac'];
+
+    Object.keys(dataObj).sort().forEach(k => {
+        options += `<option value="${k}">${k}</option>`;
+    });
+
+    areaSel.innerHTML = `<select class="form-select shadow-sm" onchange="verDetalle('${tipo}', this.value)">${options}</select>`;
+}
+
+function verDetalle(tipo, llave) {
+    if(!llave) return;
+    let data = baseDatos[tipo === 'proveedores' ? 'prov' : tipo === 'vendedores' ? 'vend' : tipo === 'clientes' ? 'cli' : 'fac'][llave];
+    let html = `<div class="mt-4 p-4 border rounded bg-white shadow-sm border-primary">
+                    <h4>Análisis de ${llave}</h4><hr>`;
+    
+    if(tipo === 'proveedores') {
+        let semaforo = data.vta > data.deuda ? '🟢 SALUDABLE' : '🔴 CRÍTICO';
+        html += `<p>Ventas del Mes: <strong>$${data.vta.toLocaleString()}</strong></p>
+                 <p>Deuda Total: <strong>$${data.deuda.toLocaleString()}</strong></p>
+                 <div class="alert ${data.vta > data.deuda ? 'alert-success' : 'alert-danger'}">${semaforo}</div>`;
+    } else {
+        html += `<p>Ventas Totales: <strong>$${data.vta ? data.vta.toLocaleString() : 'N/A'}</strong></p>`;
+        if(tipo === 'facturas') html += `<p>Saldo Pendiente: <strong>$${data.saldo.toLocaleString()}</strong></p>`;
+    }
+    
+    html += `</div>`;
+    document.getElementById('areaResultados').innerHTML = html;
+}
 
 async function leerExcel(file, header) {
     return new Promise((resolve) => {
@@ -28,79 +110,4 @@ async function leerExcel(file, header) {
         };
         reader.readAsArrayBuffer(file);
     });
-}
-
-function procesarInforme(v, inv, cxp, comp) {
-    let proveedores = {};
-    let mapaFacturas = {}; // Para saber de quién es cada factura
-
-    // 1. LIMPIEZA DE COMPRAS (Columna E es Proveedor, B es Factura)
-    comp.forEach(f => {
-        if(f.B && f.E) mapaFacturas[f.B.toString().trim()] = f.E.toString().trim();
-    });
-
-    // 2. PROCESAR VENTAS (H: Prov, D: Desc, E*F: Total, A: Tipo)
-    v.forEach(f => {
-        if (!f.D) return;
-        let p = f.H ? f.H.toString().trim() : "SIN_PROVEEDOR";
-        let desc = f.D.toUpperCase();
-
-        // Lógica de Combos en blanco (Tu genialidad)
-        if (p === "SIN_PROVEEDOR" || p === "") {
-            if (desc.includes("COLOMBINA")) p = "COLOMBINA";
-            else if (desc.includes("FAMILIA") || desc.includes("SANCELA")) p = "FAMILIA SANCELA";
-            else return; // Si no es ninguno, lo ignoramos para no ensuciar
-        }
-
-        if (!proveedores[p]) proveedores[p] = { ventas: 0, deuda: 0, stock: 0 };
-        let subtotal = (parseFloat(f.E) || 0) * (parseFloat(f.F) || 0);
-        proveedores[p].ventas += (f.A == 2 ? -subtotal : subtotal);
-    });
-
-    // 3. PROCESAR CXP (B: Factura, E: Saldo)
-    cxp.forEach(f => {
-        if(!f.B) return;
-        let fac = f.B.toString().trim();
-        let provReal = mapaFacturas[fac] || "OTROS_PROVEEDORES";
-        
-        if (!proveedores[provReal]) proveedores[provReal] = { ventas: 0, deuda: 0, stock: 0 };
-        proveedores[provReal].deuda += (parseFloat(f.E) || 0);
-    });
-
-    // 4. LLENAR EL SELECTOR (SIN NÚMEROS DE FACTURA)
-    const selector = document.getElementById('selectProveedor');
-    selector.innerHTML = '<option value="">-- Selecciona un Proveedor Real --</option>';
-    
-    Object.keys(proveedores).sort().forEach(p => {
-        if(p !== "OTROS_PROVEEDORES") {
-            let opt = document.createElement('option');
-            opt.value = p;
-            opt.textContent = p;
-            selector.appendChild(opt);
-        }
-    });
-
-    // Mostrar Dashboard
-    document.getElementById('welcomeMessage').style.display = 'none';
-    document.getElementById('dashboardResult').style.display = 'block';
-
-    // Evento al cambiar de proveedor
-    selector.onchange = function() {
-        let elegido = this.value;
-        if(!elegido) return;
-        
-        let datos = proveedores[elegido];
-        let semaforo = datos.ventas > datos.deuda ? '🟢 SALUDABLE' : '🔴 RIESGO FINANCIERO';
-        
-        document.getElementById('kpiContainer').innerHTML = `
-            <div class="row">
-                <div class="col-6 mb-3"><div class="kpi-box"><h5>Ventas</h5><h3>$${datos.ventas.toLocaleString()}</h3></div></div>
-                <div class="col-6 mb-3"><div class="kpi-box"><h5>Deuda (CXP)</h5><h3>$${datos.deuda.toLocaleString()}</h3></div></div>
-            </div>
-            <div class="alert ${datos.ventas > datos.deuda ? 'alert-success' : 'alert-danger'}">
-                <strong>Estado: ${semaforo}</strong><br>
-                ${datos.ventas < datos.deuda ? 'Socio, estás debiendo más de lo que vendes. ¡Toca apretar al proveedor!' : 'Vas bien, el flujo de caja soporta la deuda.'}
-            </div>
-        `;
-    };
 }
