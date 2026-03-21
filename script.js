@@ -1,94 +1,100 @@
 let baseDatos = { prov: {}, fac: {}, vend: {}, cli: {}, productos: {} };
 
 document.getElementById('btnProcesar').addEventListener('click', async function() {
-    const files = {
-        ventas: document.getElementById('inputVentas').files[0],
-        inv: document.getElementById('inputInventario').files[0],
-        cxp: document.getElementById('inputCXP').files[0],
-        compras: document.getElementById('inputCompras').files[0]
-    };
+    // Referencias a los inputs
+    const fVentas = document.getElementById('inputVentas').files[0];
+    const fInv = document.getElementById('inputInventario').files[0];
+    const fCXP = document.getElementById('inputCXP').files[0];
+    const fCompras = document.getElementById('inputCompras').files[0];
 
-    if (!Object.values(files).every(f => f)) {
-        alert("Socio, carga los 4 archivos para poder analizar."); return;
+    if (!fVentas || !fInv || !fCXP || !fCompras) {
+        alert("Socio, te falta cargar algún archivo. ¡Revisa los 4!");
+        return;
     }
 
-    document.getElementById('welcomeMessage').innerHTML = '<h3 class="text-primary">Mapeando base de datos de Distrileco... ⏳</h3>';
+    document.getElementById('welcomeMessage').innerHTML = '<h3 class="text-primary">Moviendo datos en Vibras Positivas... ⏳</h3>';
 
     try {
-        // Leemos con la primera fila como nombres de columnas
         const [v, inv, cxp, comp] = await Promise.all([
-            leerExcel(files.ventas), leerExcel(files.inv),
-            leerExcel(files.cxp), leerExcel(files.compras)
+            leerMaster(fVentas),
+            leerMaster(fInv),
+            leerMaster(fCXP),
+            leerMaster(fCompras)
         ]);
 
         procesarTodo(v, inv, cxp, comp);
     } catch (error) {
-        console.error(error);
-        alert("Error al leer los archivos. Asegúrate que sean Excel o CSV.");
+        console.error("Error crítico:", error);
+        alert("Error al leer: Asegúrate de que los archivos NO estén abiertos en Excel.");
     }
 });
+
+// LA FUNCIÓN QUE NO FALLA
+function leerMaster(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const bstr = e.target.result;
+                const wb = XLSX.read(bstr, { type: 'binary', cellDates: true });
+                const wsname = wb.SheetNames[0];
+                const data = XLSX.utils.sheet_to_json(wb.Sheets[wsname]);
+                resolve(data);
+            } catch (err) { reject(err); }
+        };
+        reader.readAsBinaryString(file);
+    });
+}
 
 function procesarTodo(v, inv, cxp, comp) {
     baseDatos = { prov: {}, fac: {}, vend: {}, cli: {}, productos: {} };
 
-    // 1. MAPEAR COMPRAS (Columna: factura, razon_social)
-    let mapaFacturas = {};
+    // 1. MAPEAR COMPRAS
     comp.forEach(f => {
-        let nroFac = f.factura || f.documento || f.numero;
-        if(nroFac) mapaFacturas[nroFac.toString().trim()] = f.razon_social || f.proveedor;
+        let n = f.factura || f.documento || f.numero;
+        if(n) baseDatos.fac[n.toString().trim()] = f.razon_social || f.proveedor;
     });
 
-    // 2. INVENTARIO (Columna: referencia, totalinventario, costo_ponderado_final)
+    // 2. MAPEAR INVENTARIO
     inv.forEach(f => {
-        let ref = f.referencia || f.codigo;
-        if(ref) baseDatos.productos[ref.toString().trim()] = { 
-            stock: parseFloat(f.totalinventario) || 0, 
-            costo: parseFloat(f.costo_ponderado_final) || 0 
+        let r = f.referencia || f.codigo;
+        if(r) baseDatos.productos[r.toString().trim()] = { 
+            s: parseFloat(f.totalinventario) || 0, 
+            c: parseFloat(f.costo_ponderado_final) || 0 
         };
     });
 
-    // 3. VENTAS (Columna: referencia_proveedor, referencia, nombre_producto, cantidad, precio_base_venta, vendedor, razon_social, tipo)
+    // 3. MAPEAR VENTAS
     v.forEach(f => {
         let p = f.referencia_proveedor || "SIN PROVEEDOR";
-        let desc = (f.nombre_producto || "").toUpperCase();
-        let ref = f.referencia ? f.referencia.toString().trim() : "";
+        let r = f.referencia ? f.referencia.toString().trim() : "";
+        let d = (f.nombre_producto || "").toUpperCase();
         
-        // Lógica de Combos
         if (p === "SIN PROVEEDOR" || p === "") {
-            if (desc.includes("COLOMBINA")) p = "COLOMBINA";
-            else if (desc.includes("FAMILIA") || desc.includes("SANCELA")) p = "FAMILIA SANCELA";
+            if (d.includes("COLOMBINA")) p = "COLOMBINA";
+            else if (d.includes("FAMILIA") || d.includes("SANCELA")) p = "FAMILIA SANCELA";
         }
 
         let cant = parseFloat(f.cantidad) || 0;
-        let precio = parseFloat(f.precio_base_venta) || 0;
-        let subtotal = cant * precio;
-        if(f.tipo == "2") subtotal = -subtotal; // Devoluciones
+        let pre = parseFloat(f.precio_base_venta) || 0;
+        let sub = cant * pre;
+        if(f.tipo == "2") sub = -sub;
 
-        if(!baseDatos.prov[p]) baseDatos.prov[p] = { vta: 0, deuda: 0, valorInv: 0 };
-        baseDatos.prov[p].vta += subtotal;
+        if(!baseDatos.prov[p]) baseDatos.prov[p] = { vta: 0, deu: 0, invV: 0 };
+        baseDatos.prov[p].vta += sub;
 
-        // Sumar valor de inventario al proveedor
-        if(baseDatos.productos[ref]) {
-            baseDatos.prov[p].valorInv += (baseDatos.productos[ref].stock * baseDatos.productos[ref].costo);
+        if(baseDatos.productos[r]) {
+            baseDatos.prov[p].invV += (baseDatos.productos[r].s * baseDatos.productos[r].c);
         }
-
-        // Vendedores y Clientes
-        let vend = f.vendedor || "OFICINA";
-        if(!baseDatos.vend[vend]) baseDatos.vend[vend] = { vta: 0 };
-        baseDatos.vend[vend].vta += subtotal;
-
-        let cli = f.razon_social || "VARIO";
-        if(!baseDatos.cli[cli]) baseDatos.cli[cli] = { vta: 0 };
-        baseDatos.cli[cli].vta += subtotal;
     });
 
-    // 4. CXP (Columna: documento, totalvalor o saldo)
+    // 4. MAPEAR CXP
     cxp.forEach(f => {
-        let nroFac = f.documento || f.numero;
-        let p = mapaFacturas[nroFac] || f.razon_social || "OTROS";
-        let deuda = parseFloat(f.totalvalor) || parseFloat(f.saldo) || 0;
-        if(!baseDatos.prov[p]) baseDatos.prov[p] = { vta: 0, deuda: 0, valorInv: 0 };
-        baseDatos.prov[p].deuda += deuda;
+        let n = f.documento || f.numero;
+        let p = baseDatos.fac[n] || f.razon_social || "OTROS";
+        let s = parseFloat(f.totalvalor) || parseFloat(f.saldo) || 0;
+        if(!baseDatos.prov[p]) baseDatos.prov[p] = { vta: 0, deu: 0, invV: 0 };
+        baseDatos.prov[p].deu += s;
     });
 
     document.getElementById('welcomeMessage').style.display = 'none';
@@ -96,51 +102,27 @@ function procesarTodo(v, inv, cxp, comp) {
     cambiarTab('proveedores');
 }
 
-function cambiarTab(tipo) {
-    const areaSel = document.getElementById('areaSelector');
-    let dataObj = baseDatos[tipo === 'proveedores' ? 'prov' : tipo === 'vendedores' ? 'vend' : tipo === 'clientes' ? 'cli' : 'fac'];
-    let keys = Object.keys(dataObj).filter(k => k !== "undefined").sort();
-    let options = `<option value="">-- SELECCIONA ${tipo.toUpperCase()} --</option>`;
-    keys.forEach(k => options += `<option value="${k}">${k}</option>`);
-    areaSel.innerHTML = `<select class="form-select p-3 shadow border-primary" onchange="verDetalle('${tipo}', this.value)">${options}</select>`;
+function cambiarTab(t) {
+    const area = document.getElementById('areaSelector');
+    let obj = baseDatos[t === 'proveedores' ? 'prov' : t === 'vendedores' ? 'vend' : 'cli'];
+    let opts = `<option value="">-- SELECCIONA ${t.toUpperCase()} --</option>`;
+    Object.keys(obj).sort().forEach(k => opts += `<option value="${k}">${k}</option>`);
+    area.innerHTML = `<select class="form-select p-3 border-primary" onchange="verDetalle('${t}', this.value)">${opts}</select>`;
 }
 
-function verDetalle(tipo, llave) {
-    let data = baseDatos[tipo === 'proveedores' ? 'prov' : tipo === 'vendedores' ? 'vend' : tipo === 'clientes' ? 'cli' : 'fac'][llave];
-    let html = `<div class="mt-4 p-4 border rounded bg-white shadow-lg border-primary">
-                <h4 class="text-primary">ANÁLISIS: ${llave}</h4><hr>`;
-
-    if(tipo === 'proveedores') {
-        let vtaDia = data.vta / 30;
-        let diasInv = data.vta > 0 ? Math.round(data.valorInv / (vtaDia || 1)) : "SIN VENTAS";
-        let colorSemaforo = data.vta > data.deuda ? 'alert-success' : 'alert-danger';
-
-        html += `
-            <div class="row text-center mb-3">
-                <div class="col-md-4"><h6>Ventas Mes</h6><h3 class="text-success">$${data.vta.toLocaleString()}</h3></div>
-                <div class="col-md-4"><h6>Deuda</h6><h3 class="text-danger">$${data.deuda.toLocaleString()}</h3></div>
-                <div class="col-md-4"><h6>Días Bodega</h6><h3 class="text-warning">${diasInv}</h3></div>
-            </div>
-            <div class="alert ${colorSemaforo} text-center">
-                <h2>${data.vta > data.deuda ? '🟢 RENTABLE' : '🔴 NO RENTABLE'}</h2>
-            </div>
+function verDetalle(t, ll) {
+    let d = baseDatos[t === 'proveedores' ? 'prov' : t === 'vendedores' ? 'vend' : 'cli'][ll];
+    let esBueno = d.vta > d.deu;
+    document.getElementById('areaResultados').innerHTML = `
+        <div class="mt-4 p-4 border rounded bg-white shadow-lg border-primary text-center">
+            <h3>${ll}</h3><hr>
             <div class="row">
-                <div class="col-md-6"><div class="card p-2 border-primary"><h6>Acción Proveedor</h6><p>${data.deuda > data.vta ? 'Frenar compras ya.' : 'Pedir descuento pronto pago.'}</p></div></div>
-                <div class="col-md-6"><div class="card p-2 border-success"><h6>Fuerza Ventas</h6><p>${diasInv > 30 ? 'Hacer combo con Arroz.' : 'Prioridad en ruta.'}</p></div></div>
-            </div>`;
-    } else {
-        html += `<h2 class="text-center">$${data.vta.toLocaleString()}</h2><p class="text-center">Total Movimiento</p>`;
-    }
-    document.getElementById('areaResultados').innerHTML = html;
-}
-
-async function leerExcel(file) {
-    return new Promise(res => {
-        const reader = new FileReader();
-        reader.onload = e => {
-            const wb = XLSX.read(new Uint8Array(e.target.result), {type:'array'});
-            res(XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]));
-        };
-        reader.readAsArrayBuffer(file);
-    });
+                <div class="col-4">Ventas: <br><strong class="text-success">$${d.vta.toLocaleString()}</strong></div>
+                <div class="col-4">Deuda: <br><strong class="text-danger">$${d.deu.toLocaleString()}</strong></div>
+                <div class="col-4">Inv: <br><strong class="text-warning">$${d.invV.toLocaleString()}</strong></div>
+            </div>
+            <div class="alert ${esBueno ? 'alert-success' : 'alert-danger'} mt-3">
+                <h2>${esBueno ? '🟢 RENTABLE' : '🔴 RIESGO'}</h2>
+            </div>
+        </div>`;
 }
