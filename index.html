@@ -1,1 +1,73 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibras Supplier Pulse - Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-light">
 
+    <nav class="navbar navbar-dark bg-dark shadow">
+        <div class="container-fluid">
+            <span class="navbar-brand mb-0 h1">Vibras Supplier Pulse 🚀</span>
+        </div>
+    </nav>
+
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-4">
+                <div class="card shadow-sm mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">Carga de Datos (Excel/CSV)</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Ventas del Mes</label>
+                            <input class="form-control form-control-sm" type="file" id="inputVentas">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Inventario Hoy</label>
+                            <input class="form-control form-control-sm" type="file" id="inputInventario">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Cuentas por Pagar (CXP)</label>
+                            <input class="form-control form-control-sm" type="file" id="inputCXP">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Compras Detalladas</label>
+                            <input class="form-control form-control-sm" type="file" id="inputCompras">
+                        </div>
+                        <button class="btn btn-success w-100" id="btnProcesar">Generar Informe Maestro</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-8">
+                <div class="card shadow-sm border-0">
+                    <div class="card-body text-center py-5" id="welcomeMessage">
+                        <h3 class="text-muted">Esperando datos para analizar...</h3>
+                        <p>Socio, carga los archivos a la izquierda para ver la magia.</p>
+                    </div>
+                    <div id="dashboardResult" style="display:none;">
+                        <h2 id="nombreProveedor">Resumen Proveedor</h2>
+                        <hr>
+                        <div class="row">
+                            <div class="col-6"><div class="p-3 border bg-white rounded">Ventas: <strong id="valVentas">$0</strong></div></div>
+                            <div class="col-6"><div class="p-3 border bg-white rounded">Deuda: <strong id="valCXP">$0</strong></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="text-center mt-5 py-3 text-muted">
+        <p>app desarrollada por vibras positivas derechos de autor (3117700431)</p>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
