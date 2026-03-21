@@ -1,134 +1,132 @@
 let baseDatos = { prov: {}, fac: {}, vend: {}, cli: {}, productos: {} };
 
-document.getElementById('btnProcesar').addEventListener('click', async function() {
-    const ids = ['inputVentas', 'inputInventario', 'inputCXP', 'inputCompras'];
-    const files = ids.map(id => document.getElementById(id).files[0]);
+document.getElementById('btnProcesar').onclick = async function() {
+    const fVentas = document.getElementById('inputVentas').files[0];
+    const fInv = document.getElementById('inputInventario').files[0];
+    const fCXP = document.getElementById('inputCXP').files[0];
+    const fCompras = document.getElementById('inputCompras').files[0];
 
-    if (files.some(f => !f)) {
-        alert("Harold, como CEO debes asegurar que los 4 reportes estén cargados.");
+    if (!fVentas || !fInv || !fCXP || !fCompras) {
+        alert("Socio, cargue los 4 archivos para activar la inteligencia.");
         return;
     }
 
-    document.getElementById('welcomeMessage').innerHTML = `
-        <div class="text-center py-5">
-            <div class="spinner-border text-primary mb-3"></div>
-            <h4>Vibras Positivas está cruzando millones de datos...</h4>
-        </div>`;
+    document.getElementById('welcomeMessage').innerHTML = '<div class="text-center py-5"><div class="spinner-border text-primary mb-3"></div><h4>Analizando el ADN de Distrileco...</h4></div>';
 
     try {
-        const [v, inv, cxp, comp] = await Promise.all(files.map(f => leerArchivoExcel(f)));
-        procesarInteligencia(v, inv, cxp, comp);
-    } catch (err) {
-        console.error(err);
-        alert("Error de lectura. Asegúrate de que los archivos sean Excel (.xlsx) válidos.");
+        const [v, inv, cxp, comp] = await Promise.all([
+            leerArchivo(fVentas), leerArchivo(fInv),
+            leerArchivo(fCXP), leerArchivo(fCompras)
+        ]);
+        procesarTodo(v, inv, cxp, comp);
+    } catch (error) {
+        console.error(error);
+        alert("Error: Asegúrese de que los archivos sean Excel (.xlsx) y no estén abiertos.");
     }
-});
+};
 
-function leerArchivoExcel(file) {
-    return new Promise((resolve, reject) => {
+function leerArchivo(file) {
+    return new Promise((resolve) => {
         const reader = new FileReader();
         reader.onload = (e) => {
-            try {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-                resolve(XLSX.utils.sheet_to_json(firstSheet));
-            } catch (err) { reject(err); }
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, {type: 'array'});
+            resolve(XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], {defval: ""}));
         };
         reader.readAsArrayBuffer(file);
     });
 }
 
-function procesarInteligencia(v, inv, cxp, comp) {
+function procesarTodo(v, inv, cxp, comp) {
     baseDatos = { prov: {}, fac: {}, vend: {}, cli: {}, productos: {} };
 
-    // 1. Mapeo de Compras (Factura -> Proveedor)
+    // 1. MAPEAR COMPRAS (Diccionario: factura -> razon_social)
     comp.forEach(f => {
-        let fac = f.factura || f.documento || f.numero;
-        if(fac) baseDatos.fac[fac.toString().trim()] = f.razon_social || f.proveedor;
+        let n = f.factura || f.documento || f.numero;
+        if(n) baseDatos.fac[n.toString().trim()] = f.razon_social || f.proveedor;
     });
 
-    // 2. Mapeo de Inventario (Ref -> Stock/Costo)
+    // 2. INVENTARIO (referencia -> stock / costo)
     inv.forEach(f => {
-        let ref = f.referencia || f.codigo;
-        if(ref) baseDatos.productos[ref.toString().trim()] = { 
-            s: parseFloat(f.totalinventario) || 0, 
-            c: parseFloat(f.costo_ponderado_final) || 0 
-        };
+        let r = f.referencia || f.codigo;
+        if(r) {
+            baseDatos.productos[r.toString().trim()] = { 
+                s: parseFloat(f.totalinventario) || 0, 
+                c: parseFloat(f.costo_ponderado_final) || 0 
+            };
+        }
     });
 
-    // 3. Procesar Ventas (El corazón del ingreso)
+    // 3. VENTAS (El motor de ingresos)
     v.forEach(f => {
-        let p = f.referencia_proveedor || "SIN PROVEEDOR";
-        let ref = f.referencia ? f.referencia.toString().trim() : "";
-        let desc = (f.nombre_producto || "").toUpperCase();
+        let p = f.referencia_proveedor || "OTROS";
+        let r = f.referencia ? f.referencia.toString().trim() : "";
+        let d = (f.nombre_producto || "").toUpperCase();
         
-        // Genialidad de Combos en Blanco
-        if (p === "SIN PROVEEDOR" || p === "") {
-            if (desc.includes("COLOMBINA")) p = "COLOMBINA";
-            else if (desc.includes("FAMILIA") || desc.includes("SANCELA")) p = "FAMILIA SANCELA";
+        // Lógica de Combos Vibras Positivas
+        if (p === "OTROS" || p === "" || p === "0") {
+            if (d.includes("COLOMBINA")) p = "COLOMBINA";
+            else if (d.includes("FAMILIA") || d.includes("SANCELA")) p = "FAMILIA SANCELA";
         }
 
-        let total = (parseFloat(f.cantidad) || 0) * (parseFloat(f.precio_base_venta) || 0);
-        if(f.tipo == "2") total = -total; // Devolución
+        let subtotal = (parseFloat(f.valor) || 0) * (parseFloat(f.cantidad) || 0);
+        if(f.tipo == "2" || f.tipo == 2) subtotal = -subtotal;
 
-        if(!baseDatos.prov[p]) baseDatos.prov[p] = { vta: 0, deu: 0, invVal: 0 };
-        baseDatos.prov[p].vta += total;
+        if(!baseDatos.prov[p]) baseDatos.prov[p] = { vta: 0, deu: 0, invV: 0 };
+        baseDatos.prov[p].vta += subtotal;
 
-        if(baseDatos.productos[ref]) {
-            baseDatos.prov[p].invVal += (baseDatos.productos[ref].s * baseDatos.productos[ref].c);
+        if(baseDatos.productos[r]) {
+            baseDatos.prov[p].invV += (baseDatos.productos[r].s * baseDatos.productos[r].c);
         }
-
-        let ven = f.vendedor || "OFICINA";
-        if(!baseDatos.vend[ven]) baseDatos.vend[ven] = { vta: 0 };
-        baseDatos.vend[ven].vta += total;
     });
 
-    // 4. Mapear CXP (La cruda realidad)
+    // 4. CXP (La deuda real)
     cxp.forEach(f => {
-        let fac = f.documento || f.numero;
-        let p = baseDatos.fac[fac] || f.razon_social || "OTROS";
-        let saldo = parseFloat(f.totalvalor) || parseFloat(f.saldo) || 0;
-        if(!baseDatos.prov[p]) baseDatos.prov[p] = { vta: 0, deu: 0, invVal: 0 };
-        baseDatos.prov[p].deu += saldo;
+        let n = f.documento || f.numero;
+        let p = baseDatos.fac[n.toString().trim()] || f.razon_social || "OTROS";
+        let s = parseFloat(f.totalvalor) || parseFloat(f.saldo) || 0;
+        
+        if(!baseDatos.prov[p]) baseDatos.prov[p] = { vta: 0, deu: 0, invV: 0 };
+        baseDatos.prov[p].deu += s;
+    });
+
+    // Mostrar el Dashboard
+    const sel = document.getElementById('selectProveedor');
+    sel.innerHTML = '<option value="">-- ELIGE UN PROVEEDOR --</option>';
+    Object.keys(baseDatos.prov).sort().forEach(p => {
+        let opt = document.createElement('option');
+        opt.value = p; opt.textContent = p; sel.appendChild(opt);
     });
 
     document.getElementById('welcomeMessage').style.display = 'none';
-    document.getElementById('dashboardContent').style.display = 'block';
-    cambiarTab('proveedores');
+    document.getElementById('dashboardResult').style.display = 'block';
 }
 
-function cambiarTab(t) {
-    const selArea = document.getElementById('areaSelector');
-    let obj = baseDatos[t === 'proveedores' ? 'prov' : t === 'vendedores' ? 'vend' : 'cli'];
-    let opts = `<option value="">-- SELECCIONA ${t.toUpperCase()} --</option>`;
-    Object.keys(obj).sort().forEach(k => { if(k !== "undefined") opts += `<option value="${k}">${k}</option>`; });
-    selArea.innerHTML = `<select class="form-select form-select-lg border-primary shadow-sm" onchange="verDetalle('${t}', this.value)">${opts}</select>`;
-}
+// ESTA FUNCIÓN ES LA QUE PINTA EL ANÁLISIS
+document.getElementById('selectProveedor').onchange = function() {
+    let p = this.value;
+    if(!p) return;
+    let d = baseDatos.prov[p];
+    let rentable = d.vta > d.deu;
+    let vtaDia = d.vta / 30;
+    let diasInv = d.vta > 0 ? Math.round(d.invV / (vtaDia || 1)) : "Sin Ventas";
 
-function verDetalle(t, ll) {
-    let d = baseDatos[t === 'proveedores' ? 'prov' : t === 'vendedores' ? 'vend' : 'cli'][ll];
-    let esBueno = d.vta > d.deu;
-    let html = `<div class="mt-4 p-4 border rounded bg-white shadow-sm border-primary">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h3 class="text-primary mb-0">${ll}</h3>
-                    <span class="badge ${esBueno ? 'bg-success' : 'bg-danger'} p-2 fs-6">${esBueno ? 'RENTABLE' : 'ALERTA'}</span>
-                </div><hr>`;
+    document.getElementById('kpiContainer').innerHTML = `
+        <div class="row text-center mb-4">
+            <div class="col-4"><div class="p-3 border rounded">Ventas<br><h4 class="text-success">$${Math.round(d.vta).toLocaleString()}</h4></div></div>
+            <div class="col-4"><div class="p-3 border rounded">Deuda CXP<br><h4 class="text-danger">$${Math.round(d.deu).toLocaleString()}</h4></div></div>
+            <div class="col-4"><div class="p-3 border rounded">Stock (Días)<br><h4 class="text-warning">${diasInv}</h4></div></div>
+        </div>
+        <div class="alert ${rentable ? 'alert-success' : 'alert-danger'} text-center shadow">
+            <h3>${rentable ? '🟢 PROVEEDOR RENTABLE' : '🔴 ALERTA: RIESGO FINANCIERO'}</h3>
+        </div>
+    `;
 
-    if(t === 'proveedores') {
-        let vtaDia = d.vta / 30;
-        let diasInv = d.vta > 0 ? Math.round(d.invVal / (vtaDia || 1)) : "∞";
-        html += `
-            <div class="row text-center mb-4">
-                <div class="col-4"><h6>Ventas</h6><h4 class="text-success">$${Math.round(d.vta).toLocaleString()}</h4></div>
-                <div class="col-4"><h6>Deuda</h6><h4 class="text-danger">$${Math.round(d.deu).toLocaleString()}</h4></div>
-                <div class="col-4"><h6>Días Stock</h6><h4 class="text-warning">${diasInv}</h4></div>
+    document.getElementById('recomendacionesBox').innerHTML = `
+        <div class="card border-primary">
+            <div class="card-body">
+                <h5 class="text-primary">📝 Estrategia CEO Distrileco:</h5>
+                <p>${d.deu > d.vta ? 'Socio, frena compras. Este proveedor está consumiendo tu capital. Negocia devolución de stock muerto.' : 'Proveedor estrella. Tienes flujo positivo, pide bonificación por volumen.'}</p>
             </div>
-            <div class="p-3 rounded bg-light border-start border-4 ${esBueno ? 'border-success' : 'border-danger'}">
-                <strong>💡 Estrategia CEO:</strong> ${d.deu > d.vta ? 'Socio, frena compras inmediatamente. Negocia devolución de stock muerto o exige bonificación adicional.' : 'Proveedor estrella. Pide descuento del 3-5% por pronto pago.'}
-            </div>`;
-    } else {
-        html += `<h2 class="text-center text-primary py-3">$${Math.round(d.vta).toLocaleString()}</h2><p class="text-center text-muted">Total facturado en el periodo</p>`;
-    }
-    document.getElementById('areaResultados').innerHTML = html;
-}
+        </div>`;
+};
