@@ -25,19 +25,19 @@
                     <div class="card-body">
                         <div class="mb-3">
                             <label class="form-label">Ventas del Mes</label>
-                            <input class="form-control form-control-sm" type="file" id="inputVentas">
+                            <input class="form-control form-control-sm" type="file" id="inputVentas" accept=".xlsx, .xls, .csv">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Inventario Hoy</label>
-                            <input class="form-control form-control-sm" type="file" id="inputInventario">
+                            <input class="form-control form-control-sm" type="file" id="inputInventario" accept=".xlsx, .xls, .csv">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Cuentas por Pagar (CXP)</label>
-                            <input class="form-control form-control-sm" type="file" id="inputCXP">
+                            <input class="form-control form-control-sm" type="file" id="inputCXP" accept=".xlsx, .xls, .csv">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Compras Detalladas</label>
-                            <input class="form-control form-control-sm" type="file" id="inputCompras">
+                            <input class="form-control form-control-sm" type="file" id="inputCompras" accept=".xlsx, .xls, .csv">
                         </div>
                         <button class="btn btn-success w-100" id="btnProcesar">GENERAR INFORME MAESTRO</button>
                     </div>
@@ -69,7 +69,6 @@
                             <hr>
                             
                             <div id="kpiContainer"></div>
-
                             <div id="recomendacionesBox" class="mt-4"></div>
                         </div>
 
@@ -80,7 +79,7 @@
     </div>
 
     <footer class="text-center mt-5 py-3 text-muted">
-        <p>app desarrollada por vibras positivas derechos de autor (3117700431)</p>
+        <p>App desarrollada por <strong>Vibras Positivas</strong> | Derechos de Autor © 2026 | Contacto: 3117700431</p>
     </footer>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
